@@ -15,101 +15,137 @@ const CATEGORIES = {
   OTHER: 'Other'
 };
 
+// First, we need to create categories and get their IDs
+const createCategories = async (db: any) => {
+  const categoriesCollection = db.collection('categories');
+  
+  // Clear existing categories
+  await categoriesCollection.deleteMany({});
+  
+  // Create new categories with IDs
+  const categoryDocs = Object.entries(CATEGORIES).map(([key, name]) => ({
+    name,
+    color: getRandomColor(),
+    icon: getRandomIcon()
+  }));
+  
+  const result = await categoriesCollection.insertMany(categoryDocs);
+  
+  // Return a map of category names to their IDs
+  const categoryMap: Record<string, string> = {};
+  Object.keys(result.insertedIds).forEach((key, index) => {
+    categoryMap[Object.values(CATEGORIES)[index]] = result.insertedIds[key].toString();
+  });
+  
+  return categoryMap;
+};
+
+// Helper function to generate random colors
+const getRandomColor = () => {
+  const colors = [
+    '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD',
+    '#D4A5A5', '#9B59B6', '#3498DB', '#E67E22', '#2ECC71'
+  ];
+  return colors[Math.floor(Math.random() * colors.length)];
+};
+
+// Helper function to generate random icons
+const getRandomIcon = () => {
+  const icons = ['shopping-cart', 'utensils', 'car', 'home', 'book', 'heart', 'plane', 'gift'];
+  return icons[Math.floor(Math.random() * icons.length)];
+};
+
+// Sample transactions with category IDs (to be replaced with actual IDs)
 const sampleTransactions: Omit<Transaction, 'id'>[] = [
   // Current month transactions
   {
     amount: 2500,
     description: 'Monthly groceries',
     date: new Date(),
-    categoryName: CATEGORIES.FOOD, // Use category name instead of ID
+    categoryId: 'FOOD_CATEGORY_ID', // This will be replaced with actual ID
   },
   {
     amount: 1500,
     description: 'Last week groceries',
     date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-    categoryName: CATEGORIES.FOOD,
+    categoryId: 'FOOD_CATEGORY_ID',
   },
   {
     amount: 4000,
     description: 'Movie night',
     date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-    categoryName: CATEGORIES.ENTERTAINMENT,
+    categoryId: 'ENTERTAINMENT_CATEGORY_ID',
   },
   {
     amount: 500,
     description: 'Bus fare',
     date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-    categoryName: CATEGORIES.TRANSPORTATION,
+    categoryId: 'TRANSPORTATION_CATEGORY_ID',
   },
   {
     amount: 2000,
     description: 'Electricity bill',
     date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
-    categoryName: CATEGORIES.UTILITIES,
-  },
-  {
-    amount: 2000,
-    description: 'Online course',
-    date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-    categoryName: CATEGORIES.EDUCATION,
+    categoryId: 'UTILITIES_CATEGORY_ID',
   },
   // Last month transactions (for comparison)
   {
     amount: 2000,
     description: 'Last month groceries',
     date: new Date(new Date().setMonth(new Date().getMonth() - 1)),
-    categoryName: CATEGORIES.FOOD,
+    categoryId: 'FOOD_CATEGORY_ID',
   },
   {
     amount: 600,
     description: 'Last month movie',
     date: new Date(new Date().setMonth(new Date().getMonth() - 1)),
-    categoryName: CATEGORIES.ENTERTAINMENT,
+    categoryId: 'ENTERTAINMENT_CATEGORY_ID',
   },
   {
     amount: 400,
     description: 'Last month bus fare',
     date: new Date(new Date().setMonth(new Date().getMonth() - 1)),
-    categoryName: CATEGORIES.TRANSPORTATION,
+    categoryId: 'TRANSPORTATION_CATEGORY_ID',
   },
   {
     amount: 1800,
     description: 'Last month electricity',
     date: new Date(new Date().setMonth(new Date().getMonth() - 1)),
-    categoryName: CATEGORIES.UTILITIES,
+    categoryId: 'UTILITIES_CATEGORY_ID',
   },
   {
     amount: 1500,
     description: 'Last month course',
     date: new Date(new Date().setMonth(new Date().getMonth() - 1)),
-    categoryName: CATEGORIES.EDUCATION,
+    categoryId: 'EDUCATION_CATEGORY_ID',
   },
 ];
 
+// Sample budgets with category IDs (to be replaced with actual IDs)
 const sampleBudgets: Omit<Budget, 'id'>[] = [
   {
-    amount: 4000, // Budget for Food
-    categoryName: CATEGORIES.FOOD,
+    categoryId: 'FOOD_CATEGORY_ID',
+    amount: 5000,
     month: new Date(),
   },
   {
-    amount: 3000, // Budget for Entertainment (lower than current spending to trigger warning)
-    categoryName: CATEGORIES.ENTERTAINMENT,
+    categoryId: 'ENTERTAINMENT_CATEGORY_ID',
+    amount: 3000,
     month: new Date(),
   },
   {
-    amount: 1000, // Budget for Transportation
-    categoryName: CATEGORIES.TRANSPORTATION,
+    categoryId: 'TRANSPORTATION_CATEGORY_ID',
+    amount: 1000,
     month: new Date(),
   },
   {
-    amount: 2500, // Budget for Utilities
-    categoryName: CATEGORIES.UTILITIES,
+    categoryId: 'UTILITIES_CATEGORY_ID',
+    amount: 2500,
     month: new Date(),
   },
   {
-    amount: 1500, // Budget for Education (lower than current spending to trigger warning)
-    categoryName: CATEGORIES.EDUCATION,
+    categoryId: 'EDUCATION_CATEGORY_ID',
+    amount: 1500,
     month: new Date(),
   },
 ];
@@ -117,60 +153,40 @@ const sampleBudgets: Omit<Budget, 'id'>[] = [
 export async function POST() {
   try {
     const client = await clientPromise;
-    const db = client.db("finance");
+    const db = client.db();
     
-    // Get categories
-    const categories = await db.collection("categories").find({}).toArray();
+    // First create categories and get their IDs
+    const categoryMap = await createCategories(db);
     
-    if (categories.length === 0) {
-      return NextResponse.json({ error: 'No categories found. Please seed categories first.' }, { status: 400 });
+    // Now update the sample transactions with actual category IDs
+    const transactionsWithRealIds = sampleTransactions.map(transaction => ({
+      ...transaction,
+      categoryId: categoryMap[transaction.categoryId.split('_')[0]] || transaction.categoryId
+    }));
+    
+    // Update the sample budgets with actual category IDs
+    const budgetsWithRealIds = sampleBudgets.map(budget => ({
+      ...budget,
+      categoryId: categoryMap[budget.categoryId.split('_')[0]] || budget.categoryId
+    }));
+    
+    // Clear existing data
+    await db.collection('transactions').deleteMany({});
+    await db.collection('budgets').deleteMany({});
+    
+    // Insert sample transactions
+    if (transactionsWithRealIds.length > 0) {
+      await db.collection('transactions').insertMany(transactionsWithRealIds);
     }
-
-    // Clear existing transactions and budgets
-    await db.collection("transactions").deleteMany({});
-    await db.collection("budgets").deleteMany({});
     
-    // Create a map of category names to IDs
-    const categoryMap = new Map();
-    categories.forEach(category => {
-      categoryMap.set(category.name, category.id);
-    });
+    // Insert sample budgets
+    if (budgetsWithRealIds.length > 0) {
+      await db.collection('budgets').insertMany(budgetsWithRealIds);
+    }
     
-    // Assign category IDs to transactions
-    const transactionsWithIds = sampleTransactions.map(transaction => {
-      const categoryId = categoryMap.get(transaction.categoryName);
-      if (!categoryId) {
-        console.warn(`Category not found: ${transaction.categoryName}`);
-      }
-      
-      return {
-        ...transaction,
-        id: crypto.randomUUID(),
-        categoryId: categoryId || categories[0].id, // Fallback to first category if not found
-      };
-    });
-    
-    // Assign category IDs to budgets
-    const budgetsWithIds = sampleBudgets.map(budget => {
-      const categoryId = categoryMap.get(budget.categoryName);
-      if (!categoryId) {
-        console.warn(`Category not found: ${budget.categoryName}`);
-      }
-      
-      return {
-        ...budget,
-        id: crypto.randomUUID(),
-        categoryId: categoryId || categories[0].id, // Fallback to first category if not found
-      };
-    });
-    
-    // Insert sample data
-    await db.collection("transactions").insertMany(transactionsWithIds);
-    await db.collection("budgets").insertMany(budgetsWithIds);
-    
-    return NextResponse.json({ message: 'Sample data seeded successfully' });
-  } catch (e) {
-    console.error('Error seeding sample data:', e);
-    return NextResponse.json({ error: 'Failed to seed sample data' }, { status: 500 });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error seeding data:', error);
+    return NextResponse.json({ error: 'Failed to seed data' }, { status: 500 });
   }
 } 
